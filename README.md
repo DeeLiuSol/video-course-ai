@@ -40,6 +40,83 @@
                     └──────────────────┘            └──────────────────┘
 ```
 
+## 工作流程图
+
+```mermaid
+flowchart TD
+    A[讲解视频<br/>无字幕有板书 / 无字幕无板书 / 有字幕] --> B{有板书?}
+    B -->|有板书| C[抽帧 + OCR 板书<br/>extract_whiteboard + ocr_v6]
+    B -->|无板书| D{有字幕或文稿?}
+    C --> E[板书后处理<br/>improve_board：字符纠错 / 水印过滤 / 分离]
+    D -->|有字幕/文稿| F[字幕解析<br/>parse_subtitles]
+    D -->|无字幕| G[ASR 听译<br/>transcribe_whispercpp]
+    F --> H[领域术语词典三层校正<br/>reapply_asr_correction]
+    G --> H
+    E --> H
+    E --> I[关键帧/板面分析<br/>board_fluency + generate_board_pages<br/>稳定板面挑选 / 跨帧共识投票 / 合并重复]
+    H --> I
+    E -.->|板书原文作可靠锚点| J[交叉对比<br/>案例归类 / ASR 误听纠正]
+    H -.-> J
+    I --> K[报告生成<br/>generate_case_analysis<br/>知识点 + 案例 + 主讲人口述]
+    J --> K
+    K --> L[产出报告<br/>板书原文汇总 / 知识点解析 / 复核清单]
+```
+
+## 完整处理步骤
+
+| 步骤 | 做什么 | 脚本 | 产出 |
+|------|--------|------|------|
+| 0 准备 | 视频、领域词典（glossary.json，无则按 `glossary.schema.json` 建） | — | 输入就绪 |
+| 1 抽帧 | 1fps 抽帧 + pHash 去重，识别板书帧 | `extract_whiteboard.py` | `whiteboard_data.json` |
+| 2 板书后处理 | OCR 字符纠错 / 水印过滤 / 板书-非板书分离 / 断行修复 | `improve_board.py` | `whiteboard_data_improved.json` |
+| 3 文本源 | **有板书+无字幕**：ASR 听译；**有字幕/文稿**：`parse_subtitles.py` 解析 | `transcribe_whispercpp.py` / `parse_subtitles.py` | `transcript_segments.json` |
+| 4 词典校正 | V1 精确 + V2 上下文 + V3 组合 三层术语校正 | `reapply_asr_correction.py` | `text_v3` 校正后文本 |
+| 5 关键帧分析 | 稳定板面挑选 / 跨帧共识投票修正 OCR 认错 / 合并重复 / 噪声过滤 | `board_fluency_check.py` + `generate_board_pages.py` | 分页板书原文 + 复核清单 |
+| 6 交叉对比 | 板书原文参照 → 案例主题归类、ASR 误听纠正 | `generate_case_analysis.py` | 案例正确归属 |
+| 7 报告生成 | 知识点详解 + 案例 + 主讲人口述 | `generate_case_analysis.py` | `板书知识点解析.md` |
+| 8 质检 | 对照复核清单，人工确认低置信项 | — | 可交付报告 |
+
+## 使用方法（场景化）
+
+### 场景 A：无字幕 + 有板书（教学/直播课，含案例图）
+
+**最完整路径**——OCR 板书 + ASR 听译 + 案例解析：
+
+```bash
+V=示例
+OUT="D:/video-skill-output/<课程>/"
+# 1-2 抽帧 + 板书后处理
+cd "<视频目录>" && OCR_V6_TIER=small python extract_whiteboard.py "./<视频>.mp4" --output "$OUT/whiteboard" --min-gap 10 --diff-threshold 8 --keep-frames
+python improve_board.py "$OUT/whiteboard/whiteboard_data.json" --output "$OUT/whiteboard/whiteboard_data_improved.json" --frames "$OUT/whiteboard/frames"
+# 3-4 ASR 听译 + 词典校正
+python transcribe_whispercpp.py "$OUT/audio.wav" --glossary glossary.json --model large-v3-turbo --output "$OUT/asr_output" --threads 8
+python reapply_asr_correction.py "$OUT/asr_output" --glossary glossary.json
+# 5-7 关键帧分析 + 报告
+python board_fluency_check.py "$V" --fix
+python generate_board_pages.py "$V"
+python generate_case_analysis.py --wb-dir "$OUT/whiteboard" --asr-dir "$OUT/asr_output" --rename-map rename_map.json
+```
+
+### 场景 B：无字幕 + 无板书（纯口播/讲座）
+
+**跳过板书步骤**——只做 ASR 听译 + 词典校正：
+
+```bash
+python transcribe_whispercpp.py "$OUT/audio.wav" --glossary glossary.json --model large-v3-turbo --output "$OUT/asr_output" --threads 8
+python reapply_asr_correction.py "$OUT/asr_output" --glossary glossary.json
+# 产出校正后文本 transcript_segments.json（text_v3）
+```
+
+### 场景 C：有字幕/文稿（无板书，素材自带字幕）
+
+**无需 ASR**——直接解析字幕 + 词典校正：
+
+```bash
+python parse_subtitles.py --subtitle video.srt --output "$OUT/asr_output" --glossary glossary.json
+```
+
+> 三条路径统一产出标准 `transcript_segments.json`，词典校正与下游分析完全复用。**板面文字（如有）始终是交叉对比的可靠锚点**，用于案例归类与 ASR 误听纠正。
+
 ## 功能模块
 
 | 模块 | 脚本 | 说明 |
@@ -74,34 +151,11 @@
 
 > 核心思路：**板面文字是讲解的"可靠锚点"**，用它校准其它弱信号（ASR 误听、单帧 OCR 认错、案例归属），而不是各自孤立处理。
 
-## 快速开始
+## 环境准备
 
-```bash
-# 依赖：video-skill venv（OCR/报告）+ whisper312 venv（ASR），见 requirements.txt
-V=示例课程号
-OUT="D:/video-skill-output/<课程>/"
-
-# 1. 抽帧 + OCR 板书（无字幕有板书的视频）
-cd "<视频目录>"
-OCR_V6_TIER=small python extract_whiteboard.py "./<视频>.mp4" --output "$OUT/whiteboard" --min-gap 10 --diff-threshold 8 --keep-frames
-
-# 2. 板书后处理
-python improve_board.py "$OUT/whiteboard/whiteboard_data.json" --output "$OUT/whiteboard/whiteboard_data_improved.json" --frames "$OUT/whiteboard/frames"
-
-# 3. 文本源：有字幕/文稿 → 解析（跳过 ASR）；无字幕 → ASR 听译，然后统一词典校正
-# 3a. 有字幕/文稿（如 video.srt）
-python parse_subtitles.py --subtitle video.srt --output "$OUT/asr_output" --glossary glossary.json
-# 3b. 无字幕 → ASR 听译
-python transcribe_whispercpp.py "$OUT/audio.wav" --glossary glossary.json --model large-v3-turbo --output "$OUT/asr_output" --threads 8
-python reapply_asr_correction.py "$OUT/asr_output" --glossary glossary.json
-
-# 4. 关键帧分析（稳定板面 + 共识投票）
-python board_fluency_check.py "$V" --fix
-python generate_board_pages.py "$V"
-
-# 5. 报告生成
-python generate_case_analysis.py --wb-dir "$OUT/whiteboard" --asr-dir "$OUT/asr_output"
-```
+- **依赖**：见 `requirements.txt`（OCR/报告用 `video-skill` venv，ASR 用 `whisper312` venv，勿混用）
+- **领域词典**：`glossary.json` 按 `glossary.schema.json` 格式构建（命理/中医/法律各领域不同）
+- **模型**：PP-OCRv6（rapidocr 自动下载）+ whisper large-v3-turbo（`transcribe_whispercpp.py` 指定）
 
 ## 目录/路径说明
 
