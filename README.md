@@ -1,28 +1,65 @@
 # 讲解视频内容提取框架（VideoCourseAI）
 
-从"无字幕、有板书的讲解视频"自动提取：**板书文字 OCR**、**语音听译（ASR）**、**术语词典校正**、**关键帧信息分析**，产出结构化报告。
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-green.svg)](requirements.txt)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/DeeLiuSol/video-course-ai/pulls)
 
-已实际用于命理课程（八字取财方式），同一流程可扩展应用到中医、法律、金融等任何领域的讲解/直播视频。
+面向**讲解/教学/直播视频**的一站式内容提取框架：从视频中自动提取**板书文字（OCR）**、**语音听译（ASR）**、**字幕/文稿解析**，并用**领域术语词典**做校正，产出结构化报告。
+
+已实际用于命理课程（八字取财方式讲解），同一框架可扩展到中医、法律、金融等任何领域的讲解/直播视频。
+
+---
+
+## 能力矩阵（支持 4 种视频形态）
+
+| 视频形态 | 处理方式 | 关键产出 |
+|---------|---------|---------|
+| **无字幕 + 有板书** | 板书 OCR + 语音 ASR 听译 | 板书原文 + 听译文本 + 术语校正 |
+| **无字幕 + 无板书** | 纯语音 ASR 听译 | 听译文本 + 术语校正 |
+| **有字幕** | 直接解析已有字幕（跳过 ASR） | 字幕文本 + 术语校正 |
+| **有原始听译文稿** | 文稿直接作为文本源 / 词典参考 | 结构化文本 + 术语词典反哺 |
+
+> 核心优势：**领域术语词典三层校正**——whisper 等通用 ASR 对专业术语（命理/中医/法律）天生识别弱，本框架用词典驱动纠错大幅提升准确率。
+
+## 架构总览
+
+```
+┌──────────────┐   ┌──────────────────┐   ┌─────────────────────┐
+│  输入视频      │   │  内容提取层        │   │  词典校正层           │
+│  无字幕有板书   │──▶│  ├ 抽帧+OCR(板书)  │──▶│  V1 精确映射          │
+│  无字幕无板书   │   │  ├ ASR 听译(语音)  │   │  V2 上下文规则        │
+│  有字幕/文稿   │   │  └ 字幕/文稿解析   │   │  V3 组合术语          │
+└──────────────┘   └──────────────────┘   └─────────────────────┘
+                                              │
+                              ┌───────────────┴──────────────┐
+                              ▼                              ▼
+                    ┌──────────────────┐            ┌──────────────────┐
+                    │  关键帧分析       │            │  报告生成         │
+                    │  稳定板面挑选      │            │  知识点+案例       │
+                    │  跨帧共识投票      │            │  +主讲人口述      │
+                    └──────────────────┘            └──────────────────┘
+```
 
 ## 功能模块
 
 | 模块 | 脚本 | 说明 |
 |------|------|------|
-| 视频抽帧 + OCR | `extract_whiteboard.py` + `ocr_v6.py` | pHash 去重 + PP-OCRv6 识别板书文字 |
+| 视频抽帧 + OCR 板书 | `extract_whiteboard.py` + `ocr_v6.py` | pHash 去重 + PP-OCRv6 识别板书文字 |
 | 板书后处理 | `improve_board.py` | OCR 字符纠错 + 水印过滤 + 板书/非板书分离 + 断行修复 |
-| **语音听译** | `transcribe_whispercpp.py` | whisper.cpp large-v3-turbo 贪心解码（不依赖 torch） |
-| **术语词典校正** | `reapply_asr_correction.py` | 三层校正：V1精确映射 + V2上下文规则 + V3组合术语（词典见 `glossary.schema.json`） |
-| **关键帧分析** | `board_fluency_check.py` + `generate_board_pages.py` | 稳定板面挑选（完整度分数局部最高）+ 跨帧共识投票修正单帧 OCR 认错 + 合并重复 |
+| **语音听译（ASR）** | `transcribe_whispercpp.py` | whisper.cpp large-v3-turbo 贪心解码（不依赖 torch，AMD CPU 可用） |
+| **术语词典校正** | `reapply_asr_correction.py` | 三层校正：V1精确映射 + V2上下文规则 + V3组合术语（词典格式见 `glossary.schema.json`） |
+| 关键帧/板面分析 | `board_fluency_check.py` + `generate_board_pages.py` | 稳定板面挑选 + 跨帧共识投票修正单帧 OCR 认错 + 合并重复 |
 | 报告生成 | `generate_case_analysis.py` | 知识点详解 + 案例 + 主讲人口述分析（示例领域：命理） |
 | 截图重命名 | `rename_assets.py` | 案例截图按内容命名 |
-| 识图（可选） | `vision_qwen.py` | Qwen-VL 视觉大模型 |
+| 识图（可选） | `vision_qwen.py` | Qwen-VL 视觉大模型，处理板面/图表 |
 
 ## 核心特性（解决的实际问题）
 
 1. **稳定板面挑选**：视频板面滚动/擦写的中间态（60 段）→ 用"板书完整度分数局部最高点"挑出稳定板面（6-8 页），复现人工"挑好时机截图"
 2. **跨帧共识投票**：单帧 OCR 整行认错（如 `身浊灼吐` vs 正确 `身强财旺`）字符串补全救不回，用"同槽位取多数帧版本"投票纠正
-3. **术语词典校正**：whisper 对专业术语天生弱，词典驱动三层校正大幅提升准确率（词典格式见 `glossary.schema.json`）
-4. **板书/非板书分离**：OCR 混入的图表数据分离，不污染正文
+3. **术语词典三层校正**：whisper 对专业术语弱，词典驱动三层校正大幅提升准确率（词典格式见 `glossary.schema.json`，领域词典自行填充）
+4. **板书/非板书分离**：OCR 混入的图表/排盘数据分离，不污染正文
+5. **多形态适配**：无字幕有板书（OCR+ASR）/ 无字幕无板书（纯 ASR）/ 有字幕（直接解析）/ 有文稿（作词典参考）
 
 ## 快速开始
 
@@ -31,14 +68,14 @@
 V=示例课程号
 OUT="D:/video-skill-output/<课程>/"
 
-# 1. 抽帧 + OCR 板书
+# 1. 抽帧 + OCR 板书（无字幕有板书的视频）
 cd "<视频目录>"
 OCR_V6_TIER=small python extract_whiteboard.py "./<视频>.mp4" --output "$OUT/whiteboard" --min-gap 10 --diff-threshold 8 --keep-frames
 
 # 2. 板书后处理
 python improve_board.py "$OUT/whiteboard/whiteboard_data.json" --output "$OUT/whiteboard/whiteboard_data_improved.json" --frames "$OUT/whiteboard/frames"
 
-# 3. ASR 听译 + 词典校正
+# 3. ASR 听译 + 词典校正（无字幕的视频；有字幕的跳过 ASR 直接用字幕）
 python transcribe_whispercpp.py "$OUT/audio.wav" --glossary glossary.json --model large-v3-turbo --output "$OUT/asr_output" --threads 8
 python reapply_asr_correction.py "$OUT/asr_output" --glossary glossary.json
 
