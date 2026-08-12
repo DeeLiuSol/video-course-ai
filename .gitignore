@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 虚拟环境 / 缓存
+.venv/
+venv/
+.workbuddy/
+whisper-cpp/
+.pytest_cache/
+.mypy_cache/
+
+# 临时调试文件（Claude 迭代产生的 _*.txt / 分析输出）
+_*.txt
+_*.py
+_*.json
+*.tmp
+*.log
+
+# 输出产物（D盘统一存放，不入库；含音频/视频/大文件）
+output/
+*.wav
+*.mp3
+*.mp4
+*.onnx
+*.bin
+
+# 本地模型 / 配置（含密钥，禁止入库）
+models/
+dashscope_cfg.json
+.env
+
+# 系统文件
+Thumbs.db
+.DS_Store

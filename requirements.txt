@@ -1,0 +1,19 @@
+# 板书 + 报告（video-skill venv）
+rapidocr>=3.9
+rapidocr-onnxruntime>=1.2
+numpy>=2.0
+opencv-python>=4.8
+Pillow>=10
+onnxruntime>=1.17
+
+# ASR（whisper312 venv，pywhispercpp 自带 whisper.cpp 二进制）
+pywhispercpp>=1.5
+
+# 可选：Qwen-VL 识图（vision_qwen.py，走 DashScope compatible-mode）
+dashscope>=1.19
+
+# 说明：
+# 1. 两个 venv 分离（video-skill 管 OCR/报告，whisper312 管 ASR），勿混用
+# 2. 生产 ASR 不用 torch（AMD CPU segfault），只用 pywhispercpp
+# 3. 模型文件（rapidocr PP-OCRv6 / whisper large-v3-turbo）从国内镜像下载，放 D:\workbuddy-data\models\
+# 4. Qwen 密钥在 dashscope_cfg.json（不入库）

@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "说明": "领域术语词典 schema（不含具体领域内容）。用法：reapply_asr_correction.py / transcribe_whispercpp.py 的 --glossary 参数加载。",
+  "asr_correction_map": {
+    "说明": "V1 精确映射：ASR 误听词 -> 正确词。长词优先替换（单遍）。示例条目为通用占位，领域词典请自行填充（如命理：驿马→异码、中医：某某穴位→错听）。",
+    "误听示例词": "正确词"
+  },
+  "context_rules": {
+    "说明": "V2 上下文规则：regex lookbehind/lookahead，仅当词出现在特定上下文才替换，避免误伤普通语料。",
+    "示例": [
+      {
+        "pattern": "错误词(?=正确上下文)",
+        "replacement": "正确词",
+        "note": "示例：某专业词后紧跟特定词时才替换"
+      }
+    ]
+  },
+  "fixed_phrases": {
+    "说明": "完整术语搭配（OCR/ASR 共用），不拆字，用于保护完整词条不被错误拆分。",
+    "术语": []
+  },
+  "categories": {
+    "说明": "（可选）分类分组的 aliases。⚠️ 不要从此反向自动构建 correction_map（会导致灾难性替换），只使用人工策划的 asr_correction_map/context_rules。",
+    "aliases": {}
+  }
+}
