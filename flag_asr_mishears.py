@@ -3,7 +3,7 @@
 
 原理：扫描 ASR 校正后的转写（text_v3），命中命理搭配模式
 （十神组合 / 地支关系 / 三合三刑会局），但完整词条不在
-ziping_glossary.json 的 fixed_phrases 正词表内 → 标记为疑似误听。
+glossary.json 的 fixed_phrases 正词表内 → 标记为疑似误听。
 
 两类标记：
   - norm：原文含 OCR/ASR 变体字，规范后命中正词表（如 食伤生才→食伤生财）
@@ -23,7 +23,7 @@ import difflib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import extract_fixed_phrases as efp
 
-GLOSSARY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ziping_glossary.json")
+GLOSSARY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "glossary.json")
 CLOSE_CUTOFF = 0.6
 
 

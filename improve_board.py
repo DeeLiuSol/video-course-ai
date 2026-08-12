@@ -338,12 +338,12 @@ _add_fix(r'被人驱', '被人骗', '被人驱→被人骗(OCR误识)')
 
 
 # 固定搭配保护（#28）：命中完整词条时跳过字符级改写，避免拆坏合法搭配
-GLOSSARY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ziping_glossary.json")
+GLOSSARY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "glossary.json")
 _FIXED_PHRASES_RE = None
 
 
 def _load_fixed_phrases_re():
-    """惰性加载 ziping_glossary.json 的 fixed_phrases，构建最长优先匹配正则。
+    """惰性加载 glossary.json 的 fixed_phrases，构建最长优先匹配正则。
 
     最长优先：避免"午戌三合"抢先吞掉"寅午戌三合"；只保护规范写法，
     OCR 变体（如 戌→成）不命中，仍由下方字级规则归一。

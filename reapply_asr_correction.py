@@ -3,10 +3,10 @@
 ASR 重校正脚本 - reapply_asr_correction.py
 ==========================================
 读取已有的 transcript_raw.txt / transcript_segments.json，
-用扩展后的 ziping_glossary.json 重新校正，无需重跑 ASR。
+用扩展后的 glossary.json 重新校正，无需重跑 ASR。
 
 用法:
-  python reapply_asr_correction.py <asr_output_dir> --glossary ziping_glossary.json
+  python reapply_asr_correction.py <asr_output_dir> --glossary glossary.json
 """
 
 import argparse

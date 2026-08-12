@@ -6,7 +6,7 @@
 与 transcribe_and_correct.py 使用相同的校正逻辑。
 
 用法:
-  python transcribe_whispercpp.py <audio.wav> --glossary ziping_glossary.json --model small
+  python transcribe_whispercpp.py <audio.wav> --glossary glossary.json --model small
 """
 
 import argparse
