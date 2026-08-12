@@ -47,6 +47,7 @@
 | 视频抽帧 + OCR 板书 | `extract_whiteboard.py` + `ocr_v6.py` | pHash 去重 + PP-OCRv6 识别板书文字 |
 | 板书后处理 | `improve_board.py` | OCR 字符纠错 + 水印过滤 + 板书/非板书分离 + 断行修复 |
 | **语音听译（ASR）** | `transcribe_whispercpp.py` | whisper.cpp large-v3-turbo 贪心解码（不依赖 torch，AMD CPU 可用） |
+| **字幕/文稿解析** | `parse_subtitles.py` | 解析已有字幕/文稿（.srt/.vtt/.ass/.txt）→ 标准分段 JSON，无需 ASR 即接入词典校正与下游分析 |
 | **术语词典校正** | `reapply_asr_correction.py` | 三层校正：V1精确映射 + V2上下文规则 + V3组合术语（词典格式见 `glossary.schema.json`） |
 | 关键帧/板面分析 | `board_fluency_check.py` + `generate_board_pages.py` | 稳定板面挑选 + 跨帧共识投票修正单帧 OCR 认错 + 合并重复 |
 | 报告生成 | `generate_case_analysis.py` | 知识点详解 + 案例 + 主讲人口述分析（示例领域：命理） |
@@ -87,7 +88,10 @@ OCR_V6_TIER=small python extract_whiteboard.py "./<视频>.mp4" --output "$OUT/w
 # 2. 板书后处理
 python improve_board.py "$OUT/whiteboard/whiteboard_data.json" --output "$OUT/whiteboard/whiteboard_data_improved.json" --frames "$OUT/whiteboard/frames"
 
-# 3. ASR 听译 + 词典校正（无字幕的视频；有字幕的跳过 ASR 直接用字幕）
+# 3. 文本源：有字幕/文稿 → 解析（跳过 ASR）；无字幕 → ASR 听译，然后统一词典校正
+# 3a. 有字幕/文稿（如 video.srt）
+python parse_subtitles.py --subtitle video.srt --output "$OUT/asr_output" --glossary glossary.json
+# 3b. 无字幕 → ASR 听译
 python transcribe_whispercpp.py "$OUT/audio.wav" --glossary glossary.json --model large-v3-turbo --output "$OUT/asr_output" --threads 8
 python reapply_asr_correction.py "$OUT/asr_output" --glossary glossary.json
 
