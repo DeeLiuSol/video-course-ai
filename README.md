@@ -1,191 +1,198 @@
-# 讲解视频内容提取框架（VideoCourseAI）
+# VideoCourseAI — Structured Knowledge Extraction from Lecture Videos
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-green.svg)](requirements.txt)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/DeeLiuSol/video-course-ai/pulls)
 
-面向**讲解/教学/直播视频**的一站式内容提取框架：从视频中自动提取**板书文字（OCR）**、**语音听译（ASR）**、**字幕/文稿解析**，并用**领域术语词典**做校正，产出结构化报告。
+> 🇨🇳 [中文版 README](README.zh-CN.md)
 
-已实际用于命理课程（八字取财方式讲解），同一框架可扩展到中医、法律、金融等任何领域的讲解/直播视频。
+A one-stop content-extraction framework for **lecture / teaching / livestream videos** with **no subtitles but rich whiteboard content**. It automatically extracts **whiteboard text (OCR)**, **speech transcription (ASR)**, **existing subtitles/manuscripts**, corrects domain terminology via a **domain glossary**, and performs **keyframe/board analysis** to produce structured reports.
+
+Already applied to Chinese metaphysics courses (Bazi wealth-method lectures); the same framework extends to **Traditional Chinese Medicine (TCM)**, law, finance, or any domain with dense professional terminology.
 
 ---
 
-## 项目定位：AI Skill 的内容地基
+## Project Positioning: The Content Foundation for AI Skills
 
-本项目是**讲解类视频 → 可检索知识**的内容提取层，是构建领域 AI Skill（如"某课程问答助手"）的**前置基础**：
+This project is the **content-extraction layer** that turns lecture videos into searchable knowledge — the prerequisite foundation for building domain-specific AI Skills (e.g., a "course Q&A assistant"):
 
 ```
 ┌────────────────────────────────────────────┐
-│  SKILL 层（上层建筑）                        │
-│  SKILL.md + references/ + 检索问答          │  ← 内容地基够大后封装
+│  SKILL Layer (upper architecture)           │
+│  SKILL.md + references/ + retrieval QA      │  ← wrap after content base is large enough
 ├────────────────────────────────────────────┤
-│  蒸馏层                                     │
-│  报告 → 结构化 reference 模块               │  ← 中间过渡层
-│  topics.md / cases.md / terms.md           │
+│  Distillation Layer                         │
+│  reports → structured reference modules     │  ← intermediate layer
+│  topics.md / cases.md / terms.md            │
 ├────────────────────────────────────────────┤
-│  内容提取层（本项目）✅                      │
-│  板书原文 + 听译 + 知识点 + 案例 + 主讲口述   │  ← 你现在在这里
+│  Content Extraction Layer (this project) ✅ │
+│  board text + transcription + knowledge     │  ← you are here
+│  points + cases + lecturer commentary        │
 └────────────────────────────────────────────┘
 ```
 
-**逻辑**：
-1. **Skill 的价值上限 = 内容基座的质量**——先铺地基，Skill 才有真货可答；低质量内容做的 Skill 没有意义
-2. **提取层独立可复用**——本项目不只服务 Skill，本身是通用"讲解视频→结构化知识"框架（命理/中医/法律/金融皆可）
-3. **有反馈闭环**——Skill 被问多的方向，反推需要再提取哪些视频/主题，地基越用越厚
+**Rationale**:
+1. **A Skill's value ceiling = the quality of its content base** — lay the foundation first; a Skill built on thin content is worthless
+2. **The extraction layer is independently reusable** — a general "lecture video → structured knowledge" framework, not just a Skill feeder
+3. **Feedback loop** — the topics a Skill gets asked most reveal which videos/content to extract next
 
-## 能力矩阵（支持 4 种视频形态）
+## Capability Matrix (4 Video Forms)
 
-| 视频形态 | 处理方式 | 关键产出 |
-|---------|---------|---------|
-| **无字幕 + 有板书** | 板书 OCR + 语音 ASR 听译 | 板书原文 + 听译文本 + 术语校正 |
-| **无字幕 + 无板书** | 纯语音 ASR 听译 | 听译文本 + 术语校正 |
-| **有字幕** | 直接解析已有字幕（跳过 ASR） | 字幕文本 + 术语校正 |
-| **有原始听译文稿** | 文稿直接作为文本源 / 词典参考 | 结构化文本 + 术语词典反哺 |
+| Video Form | Processing | Key Output |
+|-----------|-----------|-----------|
+| **No subtitles + whiteboard** | Whiteboard OCR + speech ASR | board text + transcript + corrected terms |
+| **No subtitles + no whiteboard** | Pure speech ASR | transcript + corrected terms |
+| **Has subtitles** | Parse existing subtitles (skip ASR) | subtitle text + corrected terms |
+| **Has original manuscript** | Manuscript as text source / glossary reference | structured text + glossary enrichment |
 
-> 核心优势：**领域术语词典三层校正**——whisper 等通用 ASR 对专业术语（命理/中医/法律）天生识别弱，本框架用词典驱动纠错大幅提升准确率。
+> **Core strength**: **3-layer domain-glossary correction** — generic ASR (whisper etc.) is weak on domain terms (metaphysics/TCM/law); this framework drives corrections via a dictionary to dramatically improve accuracy.
 
-## 架构总览
+## Architecture Overview
 
 ```
 ┌──────────────┐   ┌──────────────────┐   ┌─────────────────────┐
-│  输入视频      │   │  内容提取层        │   │  词典校正层           │
-│  无字幕有板书   │──▶│  ├ 抽帧+OCR(板书)  │──▶│  V1 精确映射          │
-│  无字幕无板书   │   │  ├ ASR 听译(语音)  │   │  V2 上下文规则        │
-│  有字幕/文稿   │   │  └ 字幕/文稿解析   │   │  V3 组合术语          │
+│   Input video │   │  Extraction layer │   │  Glossary layer     │
+│   no-sub + board │──▶│  ├ frame+OCR(whiteboard) │──▶│  V1 exact mapping   │
+│   no-sub + no-board │   │  ├ ASR speech           │   │  V2 context rules   │
+│   sub/manuscript │   │  └ subtitle parse        │   │  V3 composite terms │
 └──────────────┘   └──────────────────┘   └─────────────────────┘
                                               │
                               ┌───────────────┴──────────────┐
                               ▼                              ▼
                     ┌──────────────────┐            ┌──────────────────┐
-                    │  关键帧分析       │            │  报告生成         │
-                    │  稳定板面挑选      │            │  知识点+案例       │
-                    │  跨帧共识投票      │            │  +主讲人口述      │
+                    │  Keyframe/Board  │            │  Report          │
+                    │  analysis        │            │  knowledge+case  │
+                    │  stable pages    │            │  +commentary     │
+                    │  consensus vote  │            │                   │
                     └──────────────────┘            └──────────────────┘
 ```
 
-## 工作流程图
+## Workflow
 
 ```mermaid
 flowchart TD
-    A[讲解视频<br/>无字幕有板书 / 无字幕无板书 / 有字幕] --> B{有板书?}
-    B -->|有板书| C[抽帧 + OCR 板书<br/>extract_whiteboard + ocr_v6]
-    B -->|无板书| D{有字幕或文稿?}
-    C --> E[板书后处理<br/>improve_board：字符纠错 / 水印过滤 / 分离]
-    D -->|有字幕/文稿| F[字幕解析<br/>parse_subtitles]
-    D -->|无字幕| G[ASR 听译<br/>transcribe_whispercpp]
-    F --> H[领域术语词典三层校正<br/>reapply_asr_correction]
+    A[Lecture video<br/>no-sub+board / no-sub / with-sub] --> B{Has whiteboard?}
+    B -->|yes| C[Frame + OCR whiteboard<br/>extract_whiteboard + ocr_v6]
+    B -->|no| D{Has subtitles/manuscript?}
+    C --> E[Board post-process<br/>improve_board: char-fix / watermark / separation]
+    D -->|yes| F[Parse subtitles<br/>parse_subtitles]
+    D -->|no| G[ASR transcription<br/>transcribe_whispercpp]
+    F --> H[3-layer domain glossary correction<br/>reapply_asr_correction]
     G --> H
     E --> H
-    E --> I[关键帧/板面分析<br/>board_fluency + generate_board_pages<br/>稳定板面挑选 / 跨帧共识投票 / 合并重复]
+    E --> I[Keyframe/board analysis<br/>board_fluency + generate_board_pages<br/>stable pages / consensus vote / dedup]
     H --> I
-    E -.->|板书原文作可靠锚点| J[交叉对比<br/>案例归类 / ASR 误听纠正]
+    E -.->|board text as anchor| J[Cross-reference<br/>case topic / ASR mishear fix]
     H -.-> J
-    I --> K[报告生成<br/>generate_case_analysis<br/>知识点 + 案例 + 主讲人口述]
+    I --> K[Report generation<br/>generate_case_analysis<br/>knowledge + cases + commentary]
     J --> K
-    K --> L[产出报告<br/>板书原文汇总 / 知识点解析 / 复核清单]
+    K --> L[Output<br/>board summary / knowledge report / review list]
 ```
 
-## 完整处理步骤
+## Pipeline Steps
 
-| 步骤 | 做什么 | 脚本 | 产出 |
-|------|--------|------|------|
-| 0 准备 | 视频、领域词典（glossary.json，无则按 `glossary.schema.json` 建） | — | 输入就绪 |
-| 1 抽帧 | 1fps 抽帧 + pHash 去重，识别板书帧 | `extract_whiteboard.py` | `whiteboard_data.json` |
-| 2 板书后处理 | OCR 字符纠错 / 水印过滤 / 板书-非板书分离 / 断行修复 | `improve_board.py` | `whiteboard_data_improved.json` |
-| 3 文本源 | **有板书+无字幕**：ASR 听译；**有字幕/文稿**：`parse_subtitles.py` 解析 | `transcribe_whispercpp.py` / `parse_subtitles.py` | `transcript_segments.json` |
-| 4 词典校正 | V1 精确 + V2 上下文 + V3 组合 三层术语校正 | `reapply_asr_correction.py` | `text_v3` 校正后文本 |
-| 5 关键帧分析 | 稳定板面挑选 / 跨帧共识投票修正 OCR 认错 / 合并重复 / 噪声过滤 | `board_fluency_check.py` + `generate_board_pages.py` | 分页板书原文 + 复核清单 |
-| 6 交叉对比 | 板书原文参照 → 案例主题归类、ASR 误听纠正 | `generate_case_analysis.py` | 案例正确归属 |
-| 7 报告生成 | 知识点详解 + 案例 + 主讲人口述 | `generate_case_analysis.py` | `板书知识点解析.md` |
-| 8 质检 | 对照复核清单，人工确认低置信项 | — | 可交付报告 |
+| Step | What | Script | Output |
+|------|------|--------|--------|
+| 0 Prepare | Video, domain glossary (`glossary.json`, build per `glossary.schema.json`) | — | inputs ready |
+| 1 Frame extraction | 1fps frames + pHash dedup, detect whiteboard frames | `extract_whiteboard.py` | `whiteboard_data.json` |
+| 2 Board post-process | OCR char-fix / watermark filter / board-nonboard separation / line-join | `improve_board.py` | `whiteboard_data_improved.json` |
+| 3 Text source | **board+no-sub**: ASR; **has-sub/manuscript**: `parse_subtitles.py` | `transcribe_whispercpp.py` / `parse_subtitles.py` | `transcript_segments.json` |
+| 4 Glossary correction | V1 exact + V2 context + V3 composite | `reapply_asr_correction.py` | corrected `text_v3` |
+| 5 Keyframe analysis | stable page selection / cross-frame consensus vote / dedup / noise filter | `board_fluency_check.py` + `generate_board_pages.py` | page-based board text + review list |
+| 6 Cross-reference | board-text anchor → case topic, ASR mishear fix | `generate_case_analysis.py` | correct case topics |
+| 7 Report | knowledge points + cases + lecturer commentary | `generate_case_analysis.py` | `knowledge-report.md` |
+| 8 QA | review low-confidence items | — | deliverable report |
 
-## 使用方法（场景化）
+## Usage Scenarios
 
-### 场景 A：无字幕 + 有板书（教学/直播课，含案例图）
+### A: No subtitles + whiteboard (teaching/live, with case images)
 
-**最完整路径**——OCR 板书 + ASR 听译 + 案例解析：
+**Fullest path** — whiteboard OCR + ASR + case analysis:
 
 ```bash
-V=示例
-OUT="D:/video-skill-output/<课程>/"
-# 1-2 抽帧 + 板书后处理
-cd "<视频目录>" && OCR_V6_TIER=small python extract_whiteboard.py "./<视频>.mp4" --output "$OUT/whiteboard" --min-gap 10 --diff-threshold 8 --keep-frames
+V=example
+OUT="D:/video-skill-output/<course>/"
+# 1-2 frame extraction + board post-process
+cd "<video-dir>" && OCR_V6_TIER=small python extract_whiteboard.py "./<video>.mp4" --output "$OUT/whiteboard" --min-gap 10 --diff-threshold 8 --keep-frames
 python improve_board.py "$OUT/whiteboard/whiteboard_data.json" --output "$OUT/whiteboard/whiteboard_data_improved.json" --frames "$OUT/whiteboard/frames"
-# 3-4 ASR 听译 + 词典校正
+# 3-4 ASR + glossary correction
 python transcribe_whispercpp.py "$OUT/audio.wav" --glossary glossary.json --model large-v3-turbo --output "$OUT/asr_output" --threads 8
 python reapply_asr_correction.py "$OUT/asr_output" --glossary glossary.json
-# 5-7 关键帧分析 + 报告
+# 5-7 keyframe analysis + report
 python board_fluency_check.py "$V" --fix
 python generate_board_pages.py "$V"
 python generate_case_analysis.py --wb-dir "$OUT/whiteboard" --asr-dir "$OUT/asr_output" --rename-map rename_map.json
 ```
 
-### 场景 B：无字幕 + 无板书（纯口播/讲座）
+### B: No subtitles + no whiteboard (pure talk/podcast)
 
-**跳过板书步骤**——只做 ASR 听译 + 词典校正：
+**Skip board steps** — ASR + glossary correction only:
 
 ```bash
 python transcribe_whispercpp.py "$OUT/audio.wav" --glossary glossary.json --model large-v3-turbo --output "$OUT/asr_output" --threads 8
 python reapply_asr_correction.py "$OUT/asr_output" --glossary glossary.json
-# 产出校正后文本 transcript_segments.json（text_v3）
 ```
 
-### 场景 C：有字幕/文稿（无板书，素材自带字幕）
+### C: Has subtitles/manuscript (no whiteboard)
 
-**无需 ASR**——直接解析字幕 + 词典校正：
+**No ASR needed** — parse subtitles + glossary correction:
 
 ```bash
 python parse_subtitles.py --subtitle video.srt --output "$OUT/asr_output" --glossary glossary.json
 ```
 
-> 三条路径统一产出标准 `transcript_segments.json`，词典校正与下游分析完全复用。**板面文字（如有）始终是交叉对比的可靠锚点**，用于案例归类与 ASR 误听纠正。
+> All three paths produce the standard `transcript_segments.json`; glossary correction and downstream analysis are fully shared. **Board text (when present) is always the reliable anchor** for cross-referencing case topics and fixing ASR mishears.
 
-## 功能模块
+## Modules
 
-| 模块 | 脚本 | 说明 |
-|------|------|------|
-| 视频抽帧 + OCR 板书 | `extract_whiteboard.py` + `ocr_v6.py` | pHash 去重 + PP-OCRv6 识别板书文字 |
-| 板书后处理 | `improve_board.py` | OCR 字符纠错 + 水印过滤 + 板书/非板书分离 + 断行修复 |
-| **语音听译（ASR）** | `transcribe_whispercpp.py` | whisper.cpp large-v3-turbo 贪心解码（不依赖 torch，AMD CPU 可用） |
-| **字幕/文稿解析** | `parse_subtitles.py` | 解析已有字幕/文稿（.srt/.vtt/.ass/.txt）→ 标准分段 JSON，无需 ASR 即接入词典校正与下游分析 |
-| **术语词典校正** | `reapply_asr_correction.py` | 三层校正：V1精确映射 + V2上下文规则 + V3组合术语（词典格式见 `glossary.schema.json`） |
-| 关键帧/板面分析 | `board_fluency_check.py` + `generate_board_pages.py` | 稳定板面挑选 + 跨帧共识投票修正单帧 OCR 认错 + 合并重复 |
-| 报告生成 | `generate_case_analysis.py` | 知识点详解 + 案例 + 主讲人口述分析（示例领域：命理） |
-| 截图重命名 | `rename_assets.py` | 案例截图按内容命名 |
-| 识图（可选） | `vision_qwen.py` | Qwen-VL 视觉大模型，处理板面/图表 |
+| Module | Script | Description |
+|--------|--------|-------------|
+| Frame + OCR whiteboard | `extract_whiteboard.py` + `ocr_v6.py` | pHash dedup + PP-OCRv6 recognition |
+| Board post-process | `improve_board.py` | OCR char-fix + watermark filter + board/non-board separation + line-join |
+| **Speech ASR** | `transcribe_whispercpp.py` | whisper.cpp large-v3-turbo greedy decoding (no torch, AMD-CPU friendly) |
+| **Subtitle/manuscript parse** | `parse_subtitles.py` | Parse existing .srt/.vtt/.ass/.txt → standard segment JSON, plug into correction & analysis without ASR |
+| **Glossary correction** | `reapply_asr_correction.py` | 3-layer: V1 exact + V2 context + V3 composite (schema: `glossary.schema.json`) |
+| Keyframe/board analysis | `board_fluency_check.py` + `generate_board_pages.py` | stable page selection + cross-frame consensus vote + merge dup |
+| Report | `generate_case_analysis.py` | knowledge points + cases + lecturer commentary (example domain: metaphysics) |
+| Screenshot rename | `rename_assets.py` | case screenshots renamed by content |
+| Vision (optional) | `vision_qwen.py` | Qwen-VL visual model |
 
-## 核心特性（解决的实际问题）
+## Core Features (Problems Solved)
 
-1. **稳定板面挑选**：视频板面滚动/擦写的中间态（60 段）→ 用"板书完整度分数局部最高点"挑出稳定板面（6-8 页），复现人工"挑好时机截图"
-2. **跨帧共识投票**：单帧 OCR 整行认错（如 `身浊灼吐` vs 正确 `身强财旺`）字符串补全救不回，用"同槽位取多数帧版本"投票纠正
-3. **术语词典三层校正**：whisper 对专业术语弱，词典驱动三层校正大幅提升准确率（词典格式见 `glossary.schema.json`，领域词典自行填充）
-4. **板书/非板书分离**：OCR 混入的图表/排盘数据分离，不污染正文
-5. **多形态适配**：无字幕有板书（OCR+ASR）/ 无字幕无板书（纯 ASR）/ 有字幕（直接解析）/ 有文稿（作词典参考）
+1. **Stable page selection**: rolling/erasing board intermediate states (60 segments) → pick stable pages via "board completeness score local maxima" (6-8 pages) — reproduces manual "screenshot at the right moment"
+2. **Cross-frame consensus voting**: a single frame's OCR whole-line misrecognition (e.g. `身浊灼吐` vs correct `身强财旺`) can't be fixed by string-similarity completion — vote "same-slot, majority-version" instead
+3. **3-layer domain glossary correction**: whisper is weak on domain terms; dictionary-driven 3-layer correction greatly improves accuracy (build your own glossary per `glossary.schema.json`)
+4. **Board/non-board separation**: OCR-mixed charts/tables data separated, not polluting main text
+5. **4-form adaptation**: no-sub+board (OCR+ASR) / no-sub (pure ASR) / with-sub (parse) / with-manuscript (glossary reference)
 
-## 交叉对比（Cross-Reference）⭐
+## Cross-Reference ⭐
 
-讲解视频里各信息源**互相关联**——主讲人口述紧扣板书、案例紧扣当前讲解主题、字幕/文稿是可靠文本源。本框架利用这种关联做交叉验证：
+Information sources in lecture videos are **strongly correlated** — lecturer speech tracks the board, cases track the current topic, subtitles/manuscripts are reliable text. This framework cross-validates them:
 
-| 交叉对比 | 做法 | 价值 |
-|---------|------|------|
-| **案例 ↔ 板书主题** | 用干净板书原文构建"第X种→要点"参照表；案例按"时间窗内板行 + 主讲人口述"与参照表交叉比对，命中要点最多的主题即归属 | 案例自动归类到正确主题（替代硬编码关键词猜） |
-| **板书原文 ↔ ASR 听译** | 主讲人念的多是板书原句；用板书参照做 ASR 误听纠正（如 `乱合→乱和`、`肉体→陆体`） | 大幅减少听译人工后处理 |
-| **字幕/文稿 ↔ 词典** | 有字幕/文稿的视频，其文本直接作为校正源并可反哺领域词典 | 词典越用越准 |
+| Cross-reference | Approach | Value |
+|----------------|----------|-------|
+| **Case ↔ board topic** | Build "topic→points" reference from clean board text; case matched by "time-window board lines + lecturer speech" against it; topic with most point-hits wins | auto-classify cases to correct topics (replaces hardcoded keyword guessing) |
+| **Board ↔ ASR** | Lecturer reads board sentences; use board reference to fix ASR mishears (e.g. `乱合→乱和`, `肉体→陆体`) | greatly reduces manual post-processing |
+| **Subtitle/manuscript ↔ glossary** | Videos with subtitles use them as correction source and enrich the glossary | glossary gets better over time |
 
-> 核心思路：**板面文字是讲解的"可靠锚点"**，用它校准其它弱信号（ASR 误听、单帧 OCR 认错、案例归属），而不是各自孤立处理。
+> Core idea: **board text is the "reliable anchor" of the lecture** — use it to calibrate weaker signals (ASR mishears, single-frame OCR errors, case topics), instead of processing each source in isolation.
 
-## 环境准备
+## Environment
 
-- **依赖**：见 `requirements.txt`（OCR/报告用 `video-skill` venv，ASR 用 `whisper312` venv，勿混用）
-- **领域词典**：`glossary.json` 按 `glossary.schema.json` 格式构建（命理/中医/法律各领域不同）
-- **模型**：PP-OCRv6（rapidocr 自动下载）+ whisper large-v3-turbo（`transcribe_whispercpp.py` 指定）
+- **Dependencies**: see `requirements.txt` (OCR/reports use the `video-skill` venv; ASR uses `whisper312` venv — do not mix)
+- **Domain glossary**: build `glossary.json` per `glossary.schema.json` (different per domain: metaphysics/TCM/law)
+- **Models**: PP-OCRv6 (rapidocr auto-download) + whisper large-v3-turbo (`transcribe_whispercpp.py`)
 
-## 目录/路径说明
+## Paths / Notes
 
-- 脚本内 `OUTPUT_ROOT` / `OUTPUT_DIR` / `WB_DIR` 等硬编码了本机输出路径（`D:\video-skill-output\...`），**发布后需按你的环境调整**
-- 词典 `glossary.json` 为领域专属（命理/中医/法律各有各的术语），本项目不附完整词典，格式见 `glossary.schema.json`
-- 提取出的课程内容（板书/口述）属原课程版权，**请勿随代码发布**
+- Scripts hardcode local output paths (`OUTPUT_ROOT` / `OUTPUT_DIR` / `WB_DIR`, e.g. `D:\video-skill-output\...`) — **adjust for your environment after cloning**
+- `glossary.json` is domain-specific; this repo ships only the schema, not a full glossary
+- Extracted course content (board text / transcripts) belongs to the original course copyright — **do not publish it alongside the code**
 
 ## License
 
 [MIT](LICENSE)
+
+---
+
+**Technical paper** (Chinese): [docs/项目技术论文.md](docs/项目技术论文.md) · **WeChat article** (Chinese): [docs/公众号文章.md](docs/公众号文章.md)
